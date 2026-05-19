@@ -86,7 +86,7 @@ const SetupWizard = () => {
 
         // If setup is already completed, redirect to home
         if (data.status) {
-          window.location.href = '/';
+          window.location.href = '/newapi/';
           return;
         }
 
