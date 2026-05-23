@@ -80,6 +80,7 @@ import {
   Package,
   Server,
   CalendarClock,
+  PieChart,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -144,6 +145,8 @@ export function getLucideIcon(key, selected = false) {
     case 'user':
     case 'personal':
       return <User {...commonProps} color={iconColor} />;
+    case 'userUsage':
+      return <PieChart {...commonProps} color={iconColor} />;
     case 'models':
       return <Package {...commonProps} color={iconColor} />;
     case 'deployment':

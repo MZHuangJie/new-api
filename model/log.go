@@ -432,6 +432,93 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
+const maxUserUsageRangeSeconds int64 = 90 * 86400
+
+type ModelUsageItem struct {
+	ModelName        string `json:"model_name"`
+	Count            int    `json:"count"`
+	Quota            int    `json:"quota"`
+	PromptTokens     int    `json:"prompt_tokens"`
+	CompletionTokens int    `json:"completion_tokens"`
+	TokenUsed        int    `json:"token_used"`
+}
+
+type UserUsageSummary struct {
+	UserId           int              `json:"user_id"`
+	Username         string           `json:"username"`
+	Count            int              `json:"count"`
+	Quota            int              `json:"quota"`
+	PromptTokens     int              `json:"prompt_tokens"`
+	CompletionTokens int              `json:"completion_tokens"`
+	TokenUsed        int              `json:"token_used"`
+	Models           []ModelUsageItem `json:"models"`
+}
+
+type userUsageModelRow struct {
+	ModelName        string `gorm:"column:model_name"`
+	Count            int    `gorm:"column:count"`
+	Quota            int    `gorm:"column:quota"`
+	PromptTokens     int    `gorm:"column:prompt_tokens"`
+	CompletionTokens int    `gorm:"column:completion_tokens"`
+}
+
+func GetUserUsageByModel(userId int, startTimestamp int64, endTimestamp int64) (*UserUsageSummary, error) {
+	if userId <= 0 {
+		return nil, errors.New("无效的用户 ID")
+	}
+	if startTimestamp <= 0 || endTimestamp <= 0 {
+		return nil, errors.New("请提供有效的时间范围")
+	}
+	if endTimestamp < startTimestamp {
+		return nil, errors.New("结束时间不能早于开始时间")
+	}
+	if endTimestamp-startTimestamp > maxUserUsageRangeSeconds {
+		return nil, errors.New("时间跨度不能超过 90 天")
+	}
+
+	user, err := GetUserById(userId, false)
+	if err != nil {
+		return nil, errors.New("用户不存在")
+	}
+
+	var rows []userUsageModelRow
+	err = LOG_DB.Table("logs").
+		Select("model_name, count(*) as count, sum(quota) as quota, sum(prompt_tokens) as prompt_tokens, sum(completion_tokens) as completion_tokens").
+		Where("user_id = ? AND type = ?", userId, LogTypeConsume).
+		Where("created_at >= ? AND created_at <= ?", startTimestamp, endTimestamp).
+		Group("model_name").
+		Order("quota DESC, count DESC").
+		Scan(&rows).Error
+	if err != nil {
+		common.SysError("failed to query user usage by model: " + err.Error())
+		return nil, errors.New("查询用户用量失败")
+	}
+
+	summary := &UserUsageSummary{
+		UserId:   userId,
+		Username: user.Username,
+		Models:   make([]ModelUsageItem, 0, len(rows)),
+	}
+	for _, row := range rows {
+		tokenUsed := row.PromptTokens + row.CompletionTokens
+		item := ModelUsageItem{
+			ModelName:        row.ModelName,
+			Count:            row.Count,
+			Quota:            row.Quota,
+			PromptTokens:     row.PromptTokens,
+			CompletionTokens: row.CompletionTokens,
+			TokenUsed:        tokenUsed,
+		}
+		summary.Models = append(summary.Models, item)
+		summary.Count += row.Count
+		summary.Quota += row.Quota
+		summary.PromptTokens += row.PromptTokens
+		summary.CompletionTokens += row.CompletionTokens
+		summary.TokenUsed += tokenUsed
+	}
+	return summary, nil
+}
+
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 

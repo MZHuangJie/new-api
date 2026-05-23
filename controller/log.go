@@ -148,6 +148,22 @@ func GetLogsSelfStat(c *gin.Context) {
 	return
 }
 
+func GetUserUsageStat(c *gin.Context) {
+	userId, err := strconv.Atoi(c.Query("user_id"))
+	if err != nil || userId <= 0 {
+		common.ApiErrorMsg(c, "无效的用户 ID")
+		return
+	}
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	summary, err := model.GetUserUsageByModel(userId, startTimestamp, endTimestamp)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	common.ApiSuccess(c, summary)
+}
+
 func DeleteHistoryLogs(c *gin.Context) {
 	targetTimestamp, _ := strconv.ParseInt(c.Query("target_timestamp"), 10, 64)
 	if targetTimestamp == 0 {
